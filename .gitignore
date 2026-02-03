@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.egg-info/
+particle_sim/
+github_key.pub

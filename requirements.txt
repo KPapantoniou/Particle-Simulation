@@ -1,0 +1,11 @@
+# Math and Physics
+numpy
+scipy
+
+# Visualization
+matplotlib
+# Optimization (Optional, for speeding up dipole loops)
+torch
+
+# Development
+ipykernel
