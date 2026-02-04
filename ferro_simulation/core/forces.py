@@ -49,41 +49,40 @@ class Forces:
     #     """
     #     return th.cross(particle.magnetic_moment, B)
 
-    def magnetic_force(self, particle, field, eps=1e-6):
+    def magnetic_force(self, particle, U, dx=1e-6):
         """
         Compute magnetic force F = ∇(m · B)
         using central finite differences.
         """
-        r = particle.position
-        m = particle.magnetic_moment
+        # r = particle.position
+        # m = particle.magnetic_moment
 
-        F = th.zeros(3, device=self.device)
+        # F = th.zeros(3, device=self.device)
 
-        for d in range(3):
-            dr = th.zeros(3, device=self.device)
-            dr[d] = eps
+        # for d in range(3):
+        #     dr = th.zeros(3, device=self.device)
+        #     dr[d] = eps
 
-            B_plus = field.evaluate(r + dr, 0.0)
-            B_minus = field.evaluate(r - dr, 0.0)
+        #     B_plus = field.evaluate(r + dr, 0.0)
+        #     B_minus = field.evaluate(r - dr, 0.0)
 
-            F[d] = (th.dot(m, B_plus) - th.dot(m, B_minus)) / (2 * eps)
-            # print(B_plus,"\n",B_minus)
+        #     F[d] = (th.dot(m, B_plus) - th.dot(m, B_minus)) / (2 * eps)
 
-        return F
+        # grad_x = (th.roll(U, shifts=-1, dims=0)-th.roll(U, shifts=1, dims=0))/(2*eps)
+        # grad_y = (th.roll(U, shifts=-1, dims=1)-th.roll(U, shifts=1, dims=1))/(2*eps)
+        
+        # grad_x[0, :] = -(U[1, :] - U[0, :]) / eps
+        # grad_x[-1, :] = -(U[-1, :] - U[-2, :]) / eps
+        
+        # grad_y[:, 0] = -(U[:, 1] - U[:, 0]) / eps
+        # grad_y[:, -1] = -(U[:, -1] - U[:, -2]) / eps
+        Fx = -(th.roll(U, shifts=-1, dims=0) - th.roll(U, shifts=1, dims=0)) / (2 * dx)
+        Fy = -(th.roll(U, shifts=-1, dims=1) - th.roll(U, shifts=1, dims=1)) / (2 * dx)
+
+        return th.stack([Fx,Fy], dim=-1)
 
     def damping_force(self, particle: Particle):
-        """
-        Compute viscous damping force: F = -y v
 
-        Parameters
-        ----------
-        particle: Particle
-
-        Returns
-        -------
-        np.ndarray, shape (3,)
-            Damping force
-        """
         return -self.damping * particle.velocity
     
     def dipole_force(self, p1, p2):

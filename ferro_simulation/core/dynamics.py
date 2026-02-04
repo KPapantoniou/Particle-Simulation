@@ -29,7 +29,7 @@ class Dynamics:
         self.device =device
         self.time = 0.0
 
-    def step(self,particles, forces_obj, field_obj, dt):
+    def step(self,particles, force_grid, obj, dt, steps):
         """
         Advance all particles one timestep.
 
@@ -41,30 +41,39 @@ class Dynamics:
         dt : float
         """
         if self.method == "euler":
-            self._euler_step(particles, forces_obj, field_obj, dt)
+            self._euler_step(particles, force_grid, obj, dt, steps)
         elif self.method == "rk4":
-            self._rk4_step(particles, forces_obj, field_obj, dt)
+            self._rk4_step(particles, force_grid, obj, dt, steps)
         else:
             raise ValueError(f"Unknown integration method: {self.method}")
         self.time +=dt
     
     
-    def _euler_step(self, particles, forces_obj, field_obj, dt):
-        F_list = forces_obj.compute_forces(particles, field_obj, dt)
+    def _euler_step(self, particles, force_grid, obj, dt, steps):
+        
         # print(particles,forces_obj,field_obj,dt)
         # B = field_obj.evaluate(p.position,t=self.time)
-        for i, p in enumerate(particles):
+        Fx = force_grid[:,:,0]
+        Fy = force_grid[:,:,1]
+        grid_limit = (10*1e-3)/128
+        
+        # for _ in range(steps):
+        for i,p in enumerate(particles):
             
-            F = F_list[i]
+            
+            idx_x = int(((p.position[0] + grid_limit) / (2 * grid_limit)) * 127)
+            idx_y = int(((p.position[1] + grid_limit) / (2*grid_limit))* 127)
 
-            # p.apply_force(F)
-            p.velocity = F/forces_obj.damping
-            # p.update_velocity(dt)
+            idx_x = max(0, min(127, idx_x))
+            idx_y = max(0, min(127, idx_y))
+
+            fx = Fx[idx_x,idx_y]
+            fy = Fy[idx_x,idx_y]
+
+            p.velocity[0] = fx/ obj.damping
+            p.velocity[1] = fy/obj.damping
+
             p.update_position(dt)
-            # print(p)
-           
-            # print(F.detach().cpu().tolist())
-            # p.magnetic_moment += self.gamma * torch.cross(p.magnetic_moment, B) * dt
 
     # def _rk4_step(self, particles, forces_obj, field_obj, dt):
     #     """

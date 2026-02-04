@@ -23,7 +23,7 @@ import torch as th
 MU0 = 4 * th.pi * 1e-7
 
 class Field:
-    def __init__(self, Nx, Ny,radius, x, y, xk, yk, z_distance, mode="uniform", B0=th.tensor([0,0,1.0]), omega = 1.0, coil_points=None, I=1.0, device= 'cuda'):
+    def __init__(self, Nx, Ny,radius, x, y, z_distance, magnetic_moment, N_coils, mode="uniform", B0=th.tensor([0,0,1.0]), omega = 1.0, coil_points=None, I=1.0, device= 'cuda'):
         self.mode = mode
         self.B0 = th.tensor(B0 if B0 is not None else [0.0,0.0,1.0], dtype=th.float32, device=device)
         self.omega = th.tensor(omega,dtype=th.float32,device=device)
@@ -38,8 +38,9 @@ class Field:
         self.z_distance = z_distance
         self.x =x 
         self.y = y
-        self.xk = xk
-        self.yk=yk
+        self.magnetic_moment = magnetic_moment
+        self.N_coils = N_coils
+        
 
         
 
@@ -55,6 +56,9 @@ class Field:
             B =self.B0 * th.sin(self.omega*t)
             print(B)
             return B
+        elif self.mode == "grid":
+            
+            return(self.generate_grid())
         elif self.mode =="coil":
             if self.coil_points is None or len(self.coil_points)<2:
                 raise ValueError("coil_points must be provided with at least 2 points")
@@ -78,12 +82,23 @@ class Field:
         raise ValueError(f"Unknown mode {self.mode}. Chose 'uniform' , 'time_varying' or 'coil'")
 
     def generate_grid(self):
-        B_grid = th.zero(self.Nx,self.Ny,3)
-        U_energy = B_grid
+        B_grid = th.zeros(self.Nx,self.Ny,3)
+        U_energy = th.zeros((self.Nx, self.Ny), dtype=th.float64)
+        grid_limit = 0.01
+        dx = (10*self.radius)/self.Nx
         Bz = 0
+        x_t = 0.0
+        y_t = grid_limit
         B = th.tensor([0,0,Bz])
-        for j in range(self.Ny-1):
+        for j in range(self.Ny):
             for i in range(self.Nx-1):
-                Bz = (MU0*self.I*(self.radius**2))/2*(self.radius**2+self.z_distance**2+(self))**(3/2)
+                x_m = (i-self.Nx//2)*dx
+                y_m = (j-self.Ny//2)*dx
                 
-            B_grid[j] = B 
+                dist_sq = (x_m-x_t)**2 + (y_m-y_t)**2
+                denominator =(self.radius**2+self.z_distance**2+dist_sq)**(1.5)
+                Bz = (MU0 * self.I * self.radius**2) / (2 * denominator)
+                B_grid[i,j,2] = Bz
+                U_energy[i,j] = -self.magnetic_moment*Bz
+                
+        return  B_grid, U_energy
