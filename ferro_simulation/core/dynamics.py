@@ -29,7 +29,46 @@ class Dynamics:
         self.device =device
         self.time = 0.0
 
-    def step(self,particles, force_grid, obj, dt, steps):
+    def get_open_loop_currents(self,time):
+    # Example: Rotate the magnetic field direction over time
+        i1 = 1.0 * torch.cos(torch.tensor(time))
+        i2 = 1.0 * torch.sin(torch.tensor(time))
+        return [i1, i2]
+
+    def close_loop_control(self, p, force_grid, grid_limit, target,k):
+        
+        F1 = force_grid[0]
+        F2 = force_grid[1]
+        F3 = force_grid[2]
+        F4 = force_grid[3]
+        # print(F1.shape,F1.shape)
+        nx, ny, _ = F1.shape
+        # for p in particles:
+
+            # U = G*(-k*(particle.position-target))
+        # print(p.position)
+        idx_x = int(((p.position[0] + grid_limit) / (2 * grid_limit)) * (nx - 1))
+        idx_y = int(((p.position[1] + grid_limit) / (2 * grid_limit)) * (ny - 1))
+
+        idx_x = max(0, min(nx - 1, idx_x))
+        idx_y = max(0, min(ny - 1, idx_y))
+        G = torch.stack([
+        F1[idx_x, idx_y],   
+        F2[idx_x, idx_y],
+        F3[idx_x, idx_y],
+        F4[idx_x, idx_y]
+        ], dim=1) 
+        # print(G.shape)
+        G_pinv = torch.linalg.pinv(G)
+        e_x = -k*(p.position[0]-target[0])
+        e_y = -k*(p.position[1]-target[1])
+        e = torch.tensor([e_x, e_y], dtype=torch.float64)
+        I = torch.matmul(G_pinv,self.gamma*e)
+        I = torch.clamp(I,-1.5,1.5)
+        return I
+
+
+    def step(self, particles, force_grid, obj, dt, steps, grid_limit,I):
         """
         Advance all particles one timestep.
 
@@ -41,7 +80,7 @@ class Dynamics:
         dt : float
         """
         if self.method == "euler":
-            self._euler_step(particles, force_grid, obj, dt, steps)
+            self._euler_step(particles, force_grid, obj, dt, grid_limit, I)
         elif self.method == "rk4":
             self._rk4_step(particles, force_grid, obj, dt, steps)
         else:
@@ -49,31 +88,45 @@ class Dynamics:
         self.time +=dt
     
     
-    def _euler_step(self, particles, force_grid, obj, dt, steps):
+    def _euler_step(self, particles, force_grid, obj, dt, grid_limit,I):
         
         # print(particles,forces_obj,field_obj,dt)
         # B = field_obj.evaluate(p.position,t=self.time)
-        Fx = force_grid[:,:,0]
-        Fy = force_grid[:,:,1]
-        grid_limit = (10*1e-3)/128
+        # print(force_grid.shape)
+        F_total = torch.sum(force_grid * I.view(-1,1,1,1), dim=0)
+        # print(F_total.shape)
+        Fx = F_total[:,:,0]
+        Fy = F_total[:,:,1]
+        
+
+        
+
+        nx, ny = Fx.shape
+        if grid_limit is None:
+            grid_limit = 1.0
         
         # for _ in range(steps):
         for i,p in enumerate(particles):
             
             
-            idx_x = int(((p.position[0] + grid_limit) / (2 * grid_limit)) * 127)
-            idx_y = int(((p.position[1] + grid_limit) / (2*grid_limit))* 127)
+            idx_x = int(((p.position[0] + grid_limit) / (2 * grid_limit)) * (nx - 1))
+            idx_y = int(((p.position[1] + grid_limit) / (2 * grid_limit)) * (ny - 1))
 
-            idx_x = max(0, min(127, idx_x))
-            idx_y = max(0, min(127, idx_y))
+            idx_x = max(0, min(nx - 1, idx_x))
+            idx_y = max(0, min(ny - 1, idx_y))
 
             fx = Fx[idx_x,idx_y]
             fy = Fy[idx_x,idx_y]
+            # print(f"Force at center: {fx:.2e}, {fy:.2e}")
+            
 
             p.velocity[0] = fx/ obj.damping
             p.velocity[1] = fy/obj.damping
 
             p.update_position(dt)
+
+        
+
 
     # def _rk4_step(self, particles, forces_obj, field_obj, dt):
     #     """

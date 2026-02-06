@@ -23,7 +23,26 @@ import torch as th
 MU0 = 4 * th.pi * 1e-7
 
 class Field:
-    def __init__(self, Nx, Ny,radius, x, y, z_distance, magnetic_moment, N_coils, mode="uniform", B0=th.tensor([0,0,1.0]), omega = 1.0, coil_points=None, I=1.0, device= 'cuda'):
+    def __init__(
+        self,
+        Nx,
+        Ny,
+        radius,
+        x,
+        y,
+        z_distance,
+        magnetic_moment,
+        N_coils,
+        mode="uniform",
+        B0=th.tensor([0, 0, 1.0]),
+        omega=1.0,
+        coil_points=None,
+        I=1.0,
+        device="cuda",
+        physical_width=None,
+        dx=None,
+        grid_limit=None,
+    ):
         self.mode = mode
         self.B0 = th.tensor(B0 if B0 is not None else [0.0,0.0,1.0], dtype=th.float32, device=device)
         self.omega = th.tensor(omega,dtype=th.float32,device=device)
@@ -40,6 +59,9 @@ class Field:
         self.y = y
         self.magnetic_moment = magnetic_moment
         self.N_coils = N_coils
+        self.physical_width = physical_width
+        self.dx = dx
+        self.grid_limit = grid_limit
         
 
         
@@ -82,20 +104,31 @@ class Field:
         raise ValueError(f"Unknown mode {self.mode}. Chose 'uniform' , 'time_varying' or 'coil'")
 
     def generate_grid(self):
-        B_grid = th.zeros(self.Nx,self.Ny,3)
+        B_grid = th.zeros(self.Nx, self.Ny, 3)
         U_energy = th.zeros((self.Nx, self.Ny), dtype=th.float64)
-        grid_limit = 0.01
-        dx = (10*self.radius)/self.Nx
+
+        if self.dx is not None:
+            dx = self.dx
+        elif self.physical_width is not None:
+            dx = self.physical_width / self.Nx
+        else:
+            dx = (10 * self.radius) / self.Nx
+
+        if self.grid_limit is not None:
+            grid_limit = self.grid_limit
+        elif self.physical_width is not None:
+            grid_limit = self.physical_width / 2
+        else:
+            grid_limit = 1e-4
+
         Bz = 0
-        x_t = 0.0
-        y_t = grid_limit
         B = th.tensor([0,0,Bz])
         for j in range(self.Ny):
-            for i in range(self.Nx-1):
-                x_m = (i-self.Nx//2)*dx
-                y_m = (j-self.Ny//2)*dx
+            for i in range(self.Nx):
+                x_m = (i - self.Nx // 2) * dx
+                y_m = (j - self.Ny // 2) * dx
                 
-                dist_sq = (x_m-x_t)**2 + (y_m-y_t)**2
+                dist_sq = (x_m-self.x)**2 + (y_m-self.y)**2
                 denominator =(self.radius**2+self.z_distance**2+dist_sq)**(1.5)
                 Bz = (MU0 * self.I * self.radius**2) / (2 * denominator)
                 B_grid[i,j,2] = Bz
