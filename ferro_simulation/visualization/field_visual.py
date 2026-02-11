@@ -62,7 +62,7 @@ def visualize_quiver(B_grid, grid_limit=None, physical_width=None):
     plt.show()
 
 
-def visualize_3d_surface(B_grid, grid_limit=None, physical_width=None):
+def visualize_3d_surface(B_grid, title, grid_limit=None, physical_width=None):
     B_np = _to_numpy(B_grid)
     nx, ny, _ = B_np.shape
     extent = None
@@ -85,7 +85,7 @@ def visualize_3d_surface(B_grid, grid_limit=None, physical_width=None):
 
     surf = ax.plot_surface(X, Y, Z, cmap="magma", edgecolor="none")
     fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5)
-    ax.set_title("3D Field Intensity Surface")
+    ax.set_title(title)
     plt.show()
 
 

@@ -76,8 +76,19 @@ class Forces:
         
         # grad_y[:, 0] = -(U[:, 1] - U[:, 0]) / eps
         # grad_y[:, -1] = -(U[:, -1] - U[:, -2]) / eps
-        Fx = -(th.roll(U, shifts=-1, dims=0) - th.roll(U, shifts=1, dims=0)) / (2 * dx)
-        Fy = -(th.roll(U, shifts=-1, dims=1) - th.roll(U, shifts=1, dims=1)) / (2 * dx)
+        # Use non-periodic finite differences to avoid artificial edge cliffs from wrap-around.
+        Fx = th.empty_like(U)
+        Fy = th.empty_like(U)
+
+        # Central differences in the interior
+        Fx[1:-1, :] = -(U[2:, :] - U[:-2, :]) / (2 * dx)
+        Fy[:, 1:-1] = -(U[:, 2:] - U[:, :-2]) / (2 * dx)
+
+        # One-sided differences at boundaries
+        Fx[0, :] = -(U[1, :] - U[0, :]) / dx
+        Fx[-1, :] = -(U[-1, :] - U[-2, :]) / dx
+        Fy[:, 0] = -(U[:, 1] - U[:, 0]) / dx
+        Fy[:, -1] = -(U[:, -1] - U[:, -2]) / dx
 
         return th.stack([Fx,Fy], dim=-1)
 
@@ -137,4 +148,3 @@ class Forces:
             F_list[i] -= self.damping_force(p)
 
         return F_list
-

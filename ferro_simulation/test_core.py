@@ -1,5 +1,7 @@
 import numpy as np
 import torch as th
+import time
+from visualization.animate import Animate
 from core.particle import Particle
 from core.field import Field
 from core.forces import Forces
@@ -39,8 +41,8 @@ VISCOSITY = 0.001
 damping_coeff = float(6*th.pi *VISCOSITY*5e-6)
 relaxation_time = mass/damping_coeff
 
-Nx,Ny = 129,129
-physical_width = 4e-3
+Nx,Ny = 257,257
+physical_width = 3e-3
 dx = physical_width / Nx
 grid_limit = physical_width / 2
 N_coils =100
@@ -57,8 +59,8 @@ y3 = -y
 x4 = -x
 y4 = y
 
-target = [-0.0005,-0.001]
-k=2
+target = th.tensor([-0.0005,-0.001,0.0],device='cuda', dtype=th.float32)
+k=1.75
 
 def circular_coil(radius=1e-3, n_points=2, z=0.0):
     theta = th.linspace(0, 2*th.pi, n_points)
@@ -98,7 +100,7 @@ B_field = Field( Nx,
                 B0=[0.0,0,0.001],
                 omega = 20.0,
                 coil_points=circular_coil(radius=0.001, n_points=10),
-                I=1,
+                I=1.0,
                 device=device,
                 physical_width=physical_width,
                 dx=dx,
@@ -117,7 +119,7 @@ B_field2 =Field(Nx,
                 B0=[0.0,0,0.001],
                 omega = 20.0,
                 coil_points=circular_coil(radius=0.001, n_points=10),
-                I=1,
+                I=1.0,
                 device=device,
                 physical_width=physical_width,
                 dx=dx,
@@ -136,7 +138,7 @@ B_field3 =Field(Nx,
                 B0=[0.0,0,0.001],
                 omega = 20.0,
                 coil_points=circular_coil(radius=0.001, n_points=10),
-                I=1,
+                I=1.0,
                 device=device,
                 physical_width=physical_width,
                 dx=dx,
@@ -155,7 +157,7 @@ B_field4 =Field(Nx,
                 B0=[0.0,0,0.001],
                 omega = 20.0,
                 coil_points=circular_coil(radius=0.001, n_points=10),
-                I=1,
+                I=1.0,
                 device=device,
                 physical_width=physical_width,
                 dx=dx,
@@ -207,11 +209,11 @@ s = th.linalg.svdvals(G_real)
 
 det_control = s[:, :, 1] 
 
-contrabillity_condition(det_control, grid_limit=grid_limit)
+# contrabillity_condition(det_control, grid_limit=grid_limit)
 
 
 dt = 1e-3
-t_max = 5
+t_max = 50
 steps = int(t_max/dt)
 # 
 dynamics = Dynamics(gamma=damping_coeff, method ="euler")
@@ -234,25 +236,54 @@ I = 0
 currents_over_time = []
 # currents_over_time.append([I])
 F = [F1,F2,F3,F4]
-for step in range(steps):
+F_basis = th.stack(F, dim=0)
+U_basis = th.stack([U_grid, U_grid_2, U_grid_3, U_grid_4], dim=0)
+# for step in range(steps):
+i = 0
+steps = 0
+F_total = th.zeros((Nx,Ny,2), device=device)
+potential_history = []
+while True:
+   
+    i+=1
+    steps = i*dt
     I = dynamics.close_loop_control(p1,F, grid_limit ,target,k)
     currents_over_time.append(I.detach().cpu())
-    dynamics.step(particles, F_grid, forces, dt, steps, grid_limit,I)
+    dynamics.step(particles, F_basis, forces, dt, steps, grid_limit, I, F_total)
+    if i%1000 == 0:
+        print(i)
+    U_total = th.sum(U_basis * I.view(-1, 1, 1), dim=0)
+    potential_history.append(U_total.clone().cpu())
+    dist = th.norm(particles[0].position - target)
+    
+    # print(dist)
+    if dist < 1e-6 or i >= 200_000:
+        print(f"Final distance: {dist}")
+        break
     positions_over_time.append([p.position.cpu().numpy() for p in particles])
     velocities_over_time.append([p.velocity.cpu().numpy() for p in particles])
     # print(I)
     # currents_over_time.append(i for i in I)
 current = th.stack(currents_over_time)
 positions_over_time = th.tensor(np.array(positions_over_time))
-print(positions_over_time[:,0,0], positions_over_time[:,0,1])
+# print(positions_over_time[:,0,0], positions_over_time[:,0,1])
 # print(f"Final Position (meters): {particles[0].position[:2]}")
 
 # # Magnetic plots
-grid_visualizer(B_tot, grid_limit=grid_limit)
-visualize_quiver(B_tot, grid_limit=grid_limit)
-visualize_3d_surface(B_tot, grid_limit=grid_limit)
+# grid_visualizer(B_tot, grid_limit=grid_limit)
+# visualize_quiver(B_tot, grid_limit=grid_limit)
+visualize_3d_surface(B_tot,"3D Field Intensity Surface", grid_limit=grid_limit)
+visualize_3d_surface(-B_tot,"3D U Intensity Surface", grid_limit=grid_limit)
 # #Force plots
-# visualize_force_flow(F_grid, grid_limit=grid_limit)
+# print(F_total)
+animate = Animate(
+    potential_history,
+    grid_limit,
+    positions_over_time,
+    title="3D Potential Field Surface",
+    zlabel="Potential [J]",
+)
+# visualize_force_flow(F_total, grid_limit=grid_limit)
 # visualize_force_magnitude(F_grid, grid_limit=grid_limit)
 # visualize_overlay(B_grid, F_grid, grid_limit=grid_limit)
 # contrabillity_condition(det_control,grid_limit=grid_limit)

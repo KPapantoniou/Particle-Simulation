@@ -62,13 +62,13 @@ class Dynamics:
         G_pinv = torch.linalg.pinv(G)
         e_x = -k*(p.position[0]-target[0])
         e_y = -k*(p.position[1]-target[1])
-        e = torch.tensor([e_x, e_y], dtype=torch.float64)
+        e = torch.stack([e_x, e_y]).to(dtype=G_pinv.dtype, device=G_pinv.device)
         I = torch.matmul(G_pinv,self.gamma*e)
         I = torch.clamp(I,-1.5,1.5)
         return I
 
 
-    def step(self, particles, force_grid, obj, dt, steps, grid_limit,I):
+    def step(self, particles, force_grid, obj, dt, steps, grid_limit,I, F_total):
         """
         Advance all particles one timestep.
 
@@ -80,7 +80,7 @@ class Dynamics:
         dt : float
         """
         if self.method == "euler":
-            self._euler_step(particles, force_grid, obj, dt, grid_limit, I)
+            self._euler_step(particles, force_grid, obj, dt, grid_limit, I, F_total)
         elif self.method == "rk4":
             self._rk4_step(particles, force_grid, obj, dt, steps)
         else:
@@ -88,12 +88,25 @@ class Dynamics:
         self.time +=dt
     
     
-    def _euler_step(self, particles, force_grid, obj, dt, grid_limit,I):
+    def _euler_step(self, particles, force_grid, obj, dt, grid_limit,I, F_total):
         
         # print(particles,forces_obj,field_obj,dt)
         # B = field_obj.evaluate(p.position,t=self.time)
-        # print(force_grid.shape)
-        F_total = torch.sum(force_grid * I.view(-1,1,1,1), dim=0)
+        if isinstance(force_grid, (list, tuple)):
+            force_grid = torch.stack(force_grid, dim=0)
+
+        if force_grid.ndim == 4:
+            # Combine per-coil force basis maps with current command vector.
+            new_F = torch.sum(force_grid * I.view(-1, 1, 1, 1), dim=0)
+        elif force_grid.ndim == 3:
+            # Already a single force map (no per-coil decomposition).
+            new_F = force_grid
+        else:
+            raise ValueError(
+                f"force_grid must have shape (C,Nx,Ny,2) or (Nx,Ny,2), got {tuple(force_grid.shape)}"
+            )
+        # print(new_F.shape)
+        F_total.copy_(new_F)
         # print(F_total.shape)
         Fx = F_total[:,:,0]
         Fy = F_total[:,:,1]
