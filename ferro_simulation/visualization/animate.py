@@ -1,10 +1,20 @@
+import matplotlib
+import os
+
+_SHOW_PLOT = os.environ.get("SHOW_PLOT") == "1"
+_SHOW_ANIMATION = os.environ.get("SHOW_ANIMATION") == "1"
+if not (_SHOW_PLOT or _SHOW_ANIMATION):
+    matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.animation import FuncAnimation
+from matplotlib.animation import FFMpegWriter, FuncAnimation
 
 
 class Animate:
-    def __init__(self, field_frames, grid_limit, path, title="3D Field Surface", zlabel="Field Value"):
+    def __init__(
+        self, field_frames, grid_limit, path, title="3D Field Surface", zlabel="Field Value"
+    ):
         self.field_frames = field_frames
         self.grid_limit = grid_limit
         self.path = path
@@ -22,7 +32,16 @@ class Animate:
         self.cbar = None
 
         self.ani = FuncAnimation(self.fig, self.animate_field_changes, self.frames, interval=50)
-        plt.show()
+
+    def save(self, path, fps=20):
+        writer = FFMpegWriter(fps=fps, codec="libx264")
+        self.ani.save(path, writer=writer)
+        if _SHOW_ANIMATION:
+            plt.show()
+
+    def show(self):
+        if _SHOW_ANIMATION:
+            plt.show()
 
     def _to_numpy(self, array_like):
         if hasattr(array_like, "detach"):

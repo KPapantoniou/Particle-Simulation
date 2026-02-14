@@ -104,8 +104,8 @@ class Field:
         raise ValueError(f"Unknown mode {self.mode}. Chose 'uniform' , 'time_varying' or 'coil'")
 
     def generate_grid(self):
-        B_grid = th.zeros(self.Nx, self.Ny, 3)
-        U_energy = th.zeros((self.Nx, self.Ny), dtype=th.float64)
+        B_grid = th.zeros(self.Nx, self.Ny, 3, device=self.device, dtype=th.float32)
+        U_energy = th.zeros((self.Nx, self.Ny), device=self.device, dtype=th.float64)
 
         if self.dx is not None:
             dx = self.dx
@@ -122,7 +122,6 @@ class Field:
             grid_limit = 1e-4
 
         Bz = 0
-        B = th.tensor([0,0,Bz])
         for j in range(self.Ny):
             for i in range(self.Nx):
                 x_m = (i - self.Nx // 2) * dx

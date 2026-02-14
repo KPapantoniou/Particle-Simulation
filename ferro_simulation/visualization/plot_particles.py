@@ -1,5 +1,16 @@
 import numpy as np
+import matplotlib
+import os
+
+_SHOW_PLOT = os.environ.get("SHOW_PLOT") == "1"
+_SHOW_ANIMATION = os.environ.get("SHOW_ANIMATION") == "1"
+if not (_SHOW_PLOT or _SHOW_ANIMATION):
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+
+def _should_show_plot():
+    return _SHOW_PLOT
 
 
 def _to_numpy(array_like):
@@ -8,7 +19,15 @@ def _to_numpy(array_like):
     return np.asarray(array_like)
 
 
-def plot_particle_paths(positions_over_time, labels=None, grid_limit=None, physical_width=None):
+def plot_particle_paths(
+    positions_over_time,
+    labels=None,
+    grid_limit=None,
+    physical_width=None,
+    target=None,
+    title=None,
+    save_path=None,
+):
     data = _to_numpy(positions_over_time)
     if data.ndim != 3 or data.shape[2] < 2:
         raise ValueError("positions_over_time must be shaped (T, N, 2+) for plotting.")
@@ -17,56 +36,95 @@ def plot_particle_paths(positions_over_time, labels=None, grid_limit=None, physi
     if labels is None:
         labels = [f"p{i + 1}" for i in range(n_particles)]
 
+    fig, ax = plt.subplots(figsize=(7, 7))
     for i in range(n_particles):
         label = labels[i] if i < len(labels) else f"p{i + 1}"
-        
+
         # 1. Plot the path line
-        line, = plt.plot(data[:, i, 0], data[:, i, 1], label=label)
-        
+        (line,) = ax.plot(data[:, i, 0], data[:, i, 1], label=label)
+
         # 2. Add an 'X' at the very first position (time index 0)
         # Use the same color as the line for clarity
-        plt.scatter(data[0, i, 0], data[0, i, 1], 
-                    marker='x', 
-                    color=line.get_color(), 
-                    s=100,      # size of the cross
-                    zorder=5)   # ensure it stays on top of the line
+        ax.scatter(
+            data[0, i, 0],
+            data[0, i, 1],
+            marker="x",
+            color=line.get_color(),
+            s=100,  # size of the cross
+            zorder=5,  # ensure it stays on top of the line
+        )
 
-    plt.xlabel("x [m]")
-    plt.ylabel("y [m]")
-    plt.legend()
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("y [m]")
+    if target is not None:
+        target_np = _to_numpy(target)
+        if target_np.ndim == 1:
+            target_np = target_np[None, :]
+        ax.scatter(
+            target_np[:, 0],
+            target_np[:, 1],
+            marker="*",
+            s=160,
+            color="black",
+            zorder=6,
+            label="target",
+        )
+        ax.legend()
+    if title:
+        ax.set_title(title)
+    ax.legend()
     if grid_limit is not None:
-        plt.xlim(-grid_limit, grid_limit)
-        plt.ylim(-grid_limit, grid_limit)
+        ax.set_xlim(-grid_limit, grid_limit)
+        ax.set_ylim(-grid_limit, grid_limit)
     elif physical_width is not None:
         half = physical_width / 2
-        plt.xlim(-half, half)
-        plt.ylim(-half, half)
-    plt.gca().set_aspect("equal", adjustable="box")
-    plt.show()
+        ax.set_xlim(-half, half)
+        ax.set_ylim(-half, half)
+    ax.set_aspect("equal", adjustable="box")
+    fig.tight_layout()
+    if _should_show_plot():
+        plt.show()
+    if save_path:
+        fig.savefig(save_path, dpi=150)
+        plt.close(fig)
+    return fig
 
-def plot_particle_velocity(velocity_over_time, labels=None, grid_limit=None, physical_width=None):
+def plot_particle_velocity(
+    velocity_over_time,
+    labels=None,
+    grid_limit=None,
+    physical_width=None,
+    save_path=None,
+):
     data = _to_numpy(velocity_over_time)
     n_particles = data.shape[1]
     if labels is None:
         labels = [f"p{i + 1}" for i in range(n_particles)]
+    fig, ax = plt.subplots(figsize=(7, 7))
     for i in range(n_particles):
         label = labels[i] if i < len(labels) else f"p{i + 1}"
-        plt.plot(data[:, i, 0], data[:, i, 1], label=label)
+        ax.plot(data[:, i, 0], data[:, i, 1], label=label)
 
-    plt.xlabel("ux [m/2]")
-    plt.ylabel("uy [m/2]")
-    plt.legend()
+    ax.set_xlabel("ux [m/2]")
+    ax.set_ylabel("uy [m/2]")
+    ax.legend()
     if grid_limit is not None:
-        plt.xlim(-grid_limit, grid_limit)
-        plt.ylim(-grid_limit, grid_limit)
+        ax.set_xlim(-grid_limit, grid_limit)
+        ax.set_ylim(-grid_limit, grid_limit)
     elif physical_width is not None:
         half = physical_width / 2
-        plt.xlim(-half, half)
-        plt.ylim(-half, half)
-    plt.gca().set_aspect("equal", adjustable="box")
-    plt.show()
+        ax.set_xlim(-half, half)
+        ax.set_ylim(-half, half)
+    ax.set_aspect("equal", adjustable="box")
+    fig.tight_layout()
+    if _should_show_plot():
+        plt.show()
+    if save_path:
+        fig.savefig(save_path, dpi=150)
+        plt.close(fig)
+    return fig
 
-def plot_coil_currents(currents_over_time, dt, labels=None):
+def plot_coil_currents(currents_over_time, dt, labels=None, save_path=None):
 
     data = _to_numpy(currents_over_time)
     steps, n_coils = data.shape
@@ -74,21 +132,78 @@ def plot_coil_currents(currents_over_time, dt, labels=None):
     # Create time axis in seconds
     time_axis = np.linspace(0, steps * dt, steps)
     
-    plt.figure(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(10, 5))
     
     if labels is None:
         labels = [f"Coil {i+1}" for i in range(n_coils)]
         
     for i in range(n_coils):
-        plt.plot(time_axis, data[:, i], label=labels[i], linewidth=2)
-    
-    plt.title("Coil Control Currents")
-    plt.xlabel("Time [s]")
-    plt.ylabel("Current [A]")
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-    
+        ax.plot(time_axis, data[:, i], label=labels[i], linewidth=2)
+
+    ax.set_title("Coil Control Currents")
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel("Current [A]")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
     # Optional: Add a horizontal line at 0 for reference
-    plt.axhline(0, color='black', lw=1, ls='--')
-    
-    plt.show()
+    ax.axhline(0, color="black", lw=1, ls="--")
+
+    fig.tight_layout()
+    if _should_show_plot():
+        plt.show()
+    if save_path:
+        fig.savefig(save_path, dpi=150)
+        plt.close(fig)
+    return fig
+
+def plot_position_error(
+    positions_over_time,
+    target,
+    dt=None,
+    labels=None,
+    save_path=None,
+):
+    data = _to_numpy(positions_over_time)
+    if data.ndim != 3:
+        raise ValueError("positions_over_time must be shaped (T, N, 2+) for plotting.")
+    target_np = _to_numpy(target)
+    if target_np.ndim == 1:
+        target_np = target_np[None, :]
+    if target_np.shape[0] == 1 and data.shape[1] > 1:
+        target_np = np.repeat(target_np, data.shape[1], axis=0)
+    if target_np.shape[0] != data.shape[1]:
+        raise ValueError("target must have shape (N, D) or (D,) matching positions_over_time.")
+
+    dims = min(data.shape[2], target_np.shape[1])
+    error = data[:, :, :dims] - target_np[None, :, :dims]
+    error_norm = np.linalg.norm(error, axis=2)
+
+    steps = error_norm.shape[0]
+    if dt is None:
+        time_axis = np.arange(steps)
+        xlabel = "Step"
+    else:
+        time_axis = np.linspace(0, (steps - 1) * dt, steps)
+        xlabel = "Time [s]"
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    if labels is None:
+        labels = [f"p{i + 1}" for i in range(error_norm.shape[1])]
+    for i in range(error_norm.shape[1]):
+        label = labels[i] if i < len(labels) else f"p{i + 1}"
+        ax.plot(time_axis, error_norm[:, i], label=label, linewidth=2)
+
+    ax.set_title("Position Error Magnitude")
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("||position - target|| [m]")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    fig.tight_layout()
+    if _should_show_plot():
+        plt.show()
+    if save_path:
+        fig.savefig(save_path, dpi=150)
+        plt.close(fig)
+    return fig

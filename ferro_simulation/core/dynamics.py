@@ -1,86 +1,73 @@
-"""
-dynamics.py
------------
 
-Integrate particle motion using forces and torques.
-
-Supports:
-- Translational dynamics: F = m * a
-- Rotational dynamics: dm/dt = γ (m × B)
-- Integration methods: Euler, RK4 (can extend)
-"""
-
-# import numpy as np
 import torch 
 from core.particle import Particle
 
 class Dynamics:
-    def __init__(self, gamma =1.0, method = "euler", device = 'cuda'):
-        """
-        Initialize dynamics integrator.
-
-        Parameters
-        ----------
-        gamma : float
-            Gyromagnetic ratio for rotational dynamics
-        """
+    def __init__(self, gamma =1.0, method = "euler", device = 'cuda', damping=1.0):
+    
         self.gamma = gamma
         self.method =method.lower()
         self.device =device
+        self.damping = damping
         self.time = 0.0
 
     def get_open_loop_currents(self,time):
     # Example: Rotate the magnetic field direction over time
-        i1 = 1.0 * torch.cos(torch.tensor(time))
-        i2 = 1.0 * torch.sin(torch.tensor(time))
+        time_t = torch.tensor(time, device=self.device)
+        i1 = 1.0 * torch.cos(time_t)
+        i2 = 1.0 * torch.sin(time_t)
         return [i1, i2]
 
-    def close_loop_control(self, p, force_grid, grid_limit, target,k):
-        
-        F1 = force_grid[0]
-        F2 = force_grid[1]
-        F3 = force_grid[2]
-        F4 = force_grid[3]
-        # print(F1.shape,F1.shape)
+    def close_loop_control(self, p, force_grid, grid_limit, target,k):    
+        F1, F2, F3, F4 = force_grid
+
         nx, ny, _ = F1.shape
         # for p in particles:
 
             # U = G*(-k*(particle.position-target))
         # print(p.position)
-        idx_x = int(((p.position[0] + grid_limit) / (2 * grid_limit)) * (nx - 1))
-        idx_y = int(((p.position[1] + grid_limit) / (2 * grid_limit)) * (ny - 1))
+        pos = p.position
+        device = pos.device
+        if F1.device != device:
+            raise ValueError("force_grid must be on the same device as particle state")
 
-        idx_x = max(0, min(nx - 1, idx_x))
-        idx_y = max(0, min(ny - 1, idx_y))
-        G = torch.stack([
-        F1[idx_x, idx_y],   
-        F2[idx_x, idx_y],
-        F3[idx_x, idx_y],
-        F4[idx_x, idx_y]
-        ], dim=1) 
-        # print(G.shape)
+        if pos.ndim == 3:
+            pos_ctl = pos[:, 0, :]
+        else:
+            pos_ctl = pos
+        idx_x = ((pos_ctl[:, 0] + grid_limit) / (2 * grid_limit) * (nx - 1)).long()
+        idx_y = ((pos_ctl[:, 1] + grid_limit) / (2 * grid_limit) * (ny - 1)).long()
+        idx_x = idx_x.clamp(0, nx - 1)
+        idx_y = idx_y.clamp(0, ny - 1)
+
+        f1 = F1[idx_x, idx_y]  # (B,2)
+        f2 = F2[idx_x, idx_y]
+        f3 = F3[idx_x, idx_y]
+        f4 = F4[idx_x, idx_y]
+
+        # Build control matrix per batch: (B,2,4)
+        G = torch.stack([f1, f2, f3, f4], dim=2)
+
+        # Batched pseudo-inverse: (B,4,2)
         G_pinv = torch.linalg.pinv(G)
-        e_x = -k*(p.position[0]-target[0])
-        e_y = -k*(p.position[1]-target[1])
-        e = torch.stack([e_x, e_y]).to(dtype=G_pinv.dtype, device=G_pinv.device)
-        I = torch.matmul(G_pinv,self.gamma*e)
-        I = torch.clamp(I,-1.5,1.5)
+
+        # target should be (B,3)
+        e_x = -k * (pos_ctl[:, 0] - target[:, 0])
+        e_y = -k * (pos_ctl[:, 1] - target[:, 1])
+        e = torch.stack([e_x, e_y], dim=1)  # (B,2)
+
+        e = e.to(dtype=G_pinv.dtype, device=G_pinv.device)
+        gamma = torch.as_tensor(self.gamma, dtype=G_pinv.dtype, device=G_pinv.device)
+        I = torch.bmm(G_pinv, (gamma * e).unsqueeze(-1)).squeeze(-1)
+        I = torch.clamp(I, -1.5, 1.5)
         return I
 
 
-    def step(self, particles, force_grid, obj, dt, steps, grid_limit,I, F_total):
-        """
-        Advance all particles one timestep.
 
-        Parameters
-        ----------
-        particles : list of Particle
-        forces_obj : Forces
-        field_obj : Field
-        dt : float
-        """
+    def step(self, particles, force_grid, obj, dt, steps, grid_limit,I):
+     
         if self.method == "euler":
-            self._euler_step(particles, force_grid, obj, dt, grid_limit, I, F_total)
+            self._euler_step(particles, force_grid, obj, dt, grid_limit, I)
         elif self.method == "rk4":
             self._rk4_step(particles, force_grid, obj, dt, steps)
         else:
@@ -88,57 +75,46 @@ class Dynamics:
         self.time +=dt
     
     
-    def _euler_step(self, particles, force_grid, obj, dt, grid_limit,I, F_total):
+    def _euler_step(self, particles, force_grid, obj, dt, grid_limit,I):
         
         # print(particles,forces_obj,field_obj,dt)
         # B = field_obj.evaluate(p.position,t=self.time)
         if isinstance(force_grid, (list, tuple)):
             force_grid = torch.stack(force_grid, dim=0)
-
-        if force_grid.ndim == 4:
-            # Combine per-coil force basis maps with current command vector.
-            new_F = torch.sum(force_grid * I.view(-1, 1, 1, 1), dim=0)
-        elif force_grid.ndim == 3:
-            # Already a single force map (no per-coil decomposition).
-            new_F = force_grid
-        else:
+        if force_grid.ndim == 3:
+            force_grid = force_grid.unsqueeze(0)
+        if force_grid.ndim != 4:
             raise ValueError(
                 f"force_grid must have shape (C,Nx,Ny,2) or (Nx,Ny,2), got {tuple(force_grid.shape)}"
             )
-        # print(new_F.shape)
-        F_total.copy_(new_F)
-        # print(F_total.shape)
-        Fx = F_total[:,:,0]
-        Fy = F_total[:,:,1]
-        
+        if force_grid.device != I.device:
+            raise ValueError("force_grid and currents must be on the same device")
 
-        
-
-        nx, ny = Fx.shape
+        nx, ny = force_grid.shape[1], force_grid.shape[2]
         if grid_limit is None:
             grid_limit = 1.0
-        
-        # for _ in range(steps):
-        for i,p in enumerate(particles):
+
+        pos = particles.position
+        vel = particles.velocity
+        if pos.ndim == 2:
+            pos = pos.unsqueeze(1)
+        if vel.ndim == 2:
+            vel = vel.unsqueeze(1)
+
+        idx_x = ((pos[..., 0] + grid_limit) / (2 * grid_limit) * (nx - 1)).long()
+        idx_y = ((pos[..., 1] + grid_limit) / (2 * grid_limit) * (ny - 1)).long()
+        idx_x = idx_x.clamp(0, nx - 1)
+        idx_y = idx_y.clamp(0, ny - 1)
+
+        sampled = force_grid[:, idx_x, idx_y].permute(1, 2, 0, 3)
+        force = (I[:, None, :, None] * sampled).sum(dim=2)
+
+        vel[..., 0] = force[..., 0] / self.damping
+        vel[..., 1] = force[..., 1] / self.damping
+        particles.update_position(dt)
+
+
             
-            
-            idx_x = int(((p.position[0] + grid_limit) / (2 * grid_limit)) * (nx - 1))
-            idx_y = int(((p.position[1] + grid_limit) / (2 * grid_limit)) * (ny - 1))
-
-            idx_x = max(0, min(nx - 1, idx_x))
-            idx_y = max(0, min(ny - 1, idx_y))
-
-            fx = Fx[idx_x,idx_y]
-            fy = Fy[idx_x,idx_y]
-            # print(f"Force at center: {fx:.2e}, {fy:.2e}")
-            
-
-            p.velocity[0] = fx/ obj.damping
-            p.velocity[1] = fy/obj.damping
-
-            p.update_position(dt)
-
-        
 
 
     # def _rk4_step(self, particles, forces_obj, field_obj, dt):
@@ -198,8 +174,8 @@ class Dynamics:
     #         # Combine RK4 increments
     #         # -----------------
     #         # Clip forces to prevent overflows
-    #         F_total = torch.clamp(F1 + 2*F2 + 2*F3 + F4, min=-1e3, max=1e3)
-    #         p.velocity += dt / 6 * F_total / p.mass
+    #        = torch.clamp(F1 + 2*F2 + 2*F3 + F4, min=-1e3, max=1e3)
+    #         p.velocity += dt / 6  / p.mass
 
     #         v_total = v1 + 2*v2 + 2*v3 + v4
     #         p.position += dt / 6 * v_total

@@ -25,28 +25,23 @@ import torch
 
 class Particle:
     def __init__(self, position, velocity, magnetic_moment, mass=1.0, radius=1e-3, device='cuda'):
-        """
-        Initialize a ferromagnetic particle.
-
-        Parameters
-        ----------
-        position : array-like, shape (3,)
-            Initial particle position [x, y, z]
-        velocity : array-like, shape (3,)
-            Initial particle velocity [vx, vy, vz]
-        magnetic_moment : array-like, shape (3,)
-            Particle magnetic moment vector [mx, my, mz]
-        mass : float
-            Particle mass
-        radius : float
-            Particle radius
-        """
-        # self.gamma = gamma
+    
         self.device = device
-        self.position = torch.tensor(position, device=self.device, dtype=torch.float32)
-        self.velocity = torch.tensor(velocity, device=self.device, dtype=torch.float32)
-        self.acceleration = torch.zeros(3, device=self.device, dtype=torch.float32)
-        self.magnetic_moment = torch.tensor(magnetic_moment, device=self.device, dtype=torch.float32)
+
+        def _to_batched(t):
+            if torch.is_tensor(t):
+                t = t.to(device=self.device, dtype=torch.float32)
+                if t.ndim ==1:
+                    return t.unsqueeze(0)
+                return t
+            t = torch.tensor(t,device=self.device, dtype=torch.float32)
+            if t.ndim==1:
+                return t.unsqueeze(0)
+            return t
+        self.position = _to_batched(position)
+        self.velocity = _to_batched(velocity)
+        self.magnetic_moment = _to_batched(magnetic_moment)
+        self.acceleration = torch.zeros_like(self.position, device=self.device, dtype=torch.float32)
         self.mass = mass
         self.radius = radius
 
