@@ -59,7 +59,7 @@ class Dynamics:
         e = e.to(dtype=G_pinv.dtype, device=G_pinv.device)
         gamma = torch.as_tensor(self.gamma, dtype=G_pinv.dtype, device=G_pinv.device)
         I = torch.bmm(G_pinv, (gamma * e).unsqueeze(-1)).squeeze(-1)
-        I = torch.clamp(I, -1.5, 1.5)
+        I = torch.clamp(I, -2, 2)
         return I
 
 
@@ -95,6 +95,7 @@ class Dynamics:
             grid_limit = 1.0
 
         pos = particles.position
+        particles.apply_jitter(intensity_factor=0.01)
         vel = particles.velocity
         if pos.ndim == 2:
             pos = pos.unsqueeze(1)

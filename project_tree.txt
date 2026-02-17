@@ -1,0 +1,78 @@
+ferro_simulation
+├── control
+    ├── __init__.py
+    ├── controller.py
+    ├── field_planner.py
+    └── trajectory.py
+├── core
+    ├── __init__.py
+    ├── dynamics.py
+    │         [C] Dynamics
+    ├── field.py
+    │         [C] Field
+    ├── forces.py
+    │         [C] Forces
+    └── particle.py
+              [C] Particle
+├── pot_csv
+    └── pot_closed.csv
+├── project_tree.txt
+├── results
+    ├── batch_1_currents_open.png
+    ├── batch_1_error_open.png
+    ├── batch_1_trajectory_open.png
+    ├── batch_2_currents_closed.png
+    ├── batch_2_error_closed.png
+    ├── batch_2_trajectory_closed.png
+    ├── batch_3_currents_closed.png
+    ├── batch_3_error_closed.png
+    ├── batch_3_trajectory_closed.png
+    ├── batch_4_currents_closed.png
+    ├── batch_4_error_closed.png
+    ├── batch_4_trajectory_closed.png
+    ├── batch_5_currents_closed.png
+    ├── batch_5_error_closed.png
+    ├── batch_5_trajectory_closed.png
+    ├── trajectories_closed.pt
+    └── trajectories_open.pt
+├── run_program.sh
+├── run_sim.py
+│         [f] run_simulation
+│         [C] SimulationRunner
+├── test_core.py
+│         [f] _sample_xy
+│         [f] _load_pot_csv
+│         [f] circular_coil
+│         [f] _build_particle
+│         [f] run_mode
+│         [f] _select_batch_positions
+│         [f] _select_batch_currents
+│         [f] _validate_batch_result
+├── view_pt.py
+│         [f] _describe_tensor
+│         [f] _describe_value
+│         [f] describe_loaded
+│         [f] _parse_target
+│         [f] _first_batch
+│         [f] main
+└── visualization
+    ├── __init__.py
+    ├── animate.py
+    │         [C] Animate
+    ├── field_visual.py
+    │         [f] _should_show_plot
+    │         [f] _to_numpy
+    │         [f] grid_visualizer
+    │         [f] visualize_quiver
+    │         [f] visualize_3d_surface
+    │         [f] visualize_force_flow
+    │         [f] visualize_force_magnitude
+    │         [f] visualize_overlay
+    │         [f] contrabillity_condition
+    └── plot_particles.py
+              [f] _should_show_plot
+              [f] _to_numpy
+              [f] plot_particle_paths
+              [f] plot_particle_velocity
+              [f] plot_coil_currents
+              [f] plot_position_error

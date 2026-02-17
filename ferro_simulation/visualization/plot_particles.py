@@ -40,18 +40,30 @@ def plot_particle_paths(
     for i in range(n_particles):
         label = labels[i] if i < len(labels) else f"p{i + 1}"
 
-        # 1. Plot the path line
         (line,) = ax.plot(data[:, i, 0], data[:, i, 1], label=label)
 
-        # 2. Add an 'X' at the very first position (time index 0)
-        # Use the same color as the line for clarity
+        # Start marker
         ax.scatter(
             data[0, i, 0],
             data[0, i, 1],
             marker="x",
             color=line.get_color(),
-            s=100,  # size of the cross
-            zorder=5,  # ensure it stays on top of the line
+            s=100,
+            zorder=5,
+            label="start" if i == 0 else None,
+        )
+
+        # Final marker
+        ax.scatter(
+            data[-1, i, 0],
+            data[-1, i, 1],
+            marker="o",
+            facecolors="none",
+            edgecolors=line.get_color(),
+            s=90,
+            linewidths=2,
+            zorder=6,
+            label="final" if i == 0 else None,
         )
 
     ax.set_xlabel("x [m]")
@@ -69,7 +81,6 @@ def plot_particle_paths(
             zorder=6,
             label="target",
         )
-        ax.legend()
     if title:
         ax.set_title(title)
     ax.legend()
