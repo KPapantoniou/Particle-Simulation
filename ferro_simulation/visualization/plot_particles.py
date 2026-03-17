@@ -135,13 +135,27 @@ def plot_particle_velocity(
         plt.close(fig)
     return fig
 
-def plot_coil_currents(currents_over_time, dt, labels=None, save_path=None):
+def plot_coil_signals(
+    signals_over_time,
+    dt,
+    labels=None,
+    save_path=None,
+    title="Coil Signals",
+    ylabel="Signal",
+):
+    data = _to_numpy(signals_over_time)
+    if data.ndim == 1:
+        data = data[:, None]
+    elif data.ndim == 3:
+        # If a batch/ensemble dimension is present, plot the first trajectory.
+        data = data[:, 0, :]
+    elif data.ndim != 2:
+        raise ValueError("signals_over_time must be shaped (T, C), (T, B, C), or (T,).")
 
-    data = _to_numpy(currents_over_time)
     steps, n_coils = data.shape
     
     # Create time axis in seconds
-    time_axis = np.linspace(0, steps * dt, steps)
+    time_axis = np.linspace(0, (steps - 1) * dt, steps)
     
     fig, ax = plt.subplots(figsize=(10, 5))
     
@@ -149,11 +163,12 @@ def plot_coil_currents(currents_over_time, dt, labels=None, save_path=None):
         labels = [f"Coil {i+1}" for i in range(n_coils)]
         
     for i in range(n_coils):
-        ax.plot(time_axis, data[:, i], label=labels[i], linewidth=2)
+        label = labels[i] if i < len(labels) else f"Coil {i+1}"
+        ax.plot(time_axis, data[:, i], label=label, linewidth=2)
 
-    ax.set_title("Coil Control Currents")
+    ax.set_title(title)
     ax.set_xlabel("Time [s]")
-    ax.set_ylabel("Current [A]")
+    ax.set_ylabel(ylabel)
     ax.grid(True, alpha=0.3)
     ax.legend()
 
@@ -167,6 +182,24 @@ def plot_coil_currents(currents_over_time, dt, labels=None, save_path=None):
         fig.savefig(save_path, dpi=150)
         plt.close(fig)
     return fig
+
+
+def plot_coil_currents(
+    currents_over_time,
+    dt,
+    labels=None,
+    save_path=None,
+    title="Coil Control Currents",
+    ylabel="Current [A]",
+):
+    return plot_coil_signals(
+        currents_over_time,
+        dt=dt,
+        labels=labels,
+        save_path=save_path,
+        title=title,
+        ylabel=ylabel,
+    )
 
 def plot_position_error(
     positions_over_time,

@@ -11,7 +11,7 @@ import torch as th
 
 from visualization.plot_particles import (
     plot_particle_paths,
-    plot_coil_currents,
+    plot_coil_signals,
     plot_position_error,
 )
 
@@ -141,7 +141,13 @@ def main() -> None:
     parser.add_argument("--dt", type=float, default=None, help="Timestep in seconds for time axis.")
     parser.add_argument("--batch", type=int, default=None, help="Select one batch index (0-based) for debugging.")
     parser.add_argument("--no-error", action="store_true", help="Skip position error plot.")
-    parser.add_argument("--no-curr", action="store_true", help="Skip current plot.")
+    parser.add_argument(
+        "--no-coils",
+        "--no-curr",
+        dest="no_coils",
+        action="store_true",
+        help="Skip coil signal plots (voltage and current).",
+    )
     parser.add_argument(
         "--save-dir",
         type=str,
@@ -191,13 +197,33 @@ def main() -> None:
                     save_path=err_save,
                 )
 
+        voltage = _as_time_tensor(data, "voltage")
+        if isinstance(voltage, th.Tensor) and not args.no_coils:
+            voltage_all = voltage if voltage.ndim == 3 else voltage.unsqueeze(1)
+            voltage_sel = _select_batch(voltage_all, args.batch)
+            voltages_over_time = voltage_sel if voltage_sel.ndim == 2 else voltage_sel.squeeze(1)
+            voltage_save = os.path.join(args.save_dir, f"{stem}_coil_voltages.png") if args.save_dir else None
+            plot_coil_signals(
+                voltages_over_time,
+                dt=dt,
+                save_path=voltage_save,
+                title="Coil Control Voltages",
+                ylabel="Voltage [V]",
+            )
+
         curr = _as_time_tensor(data, "curr")
-        if isinstance(curr, th.Tensor) and not args.no_curr:
+        if isinstance(curr, th.Tensor) and not args.no_coils:
             curr_all = curr if curr.ndim == 3 else curr.unsqueeze(1)
             curr_sel = _select_batch(curr_all, args.batch)
             currents_over_time = curr_sel if curr_sel.ndim == 2 else curr_sel.squeeze(1)
             curr_save = os.path.join(args.save_dir, f"{stem}_coil_currents.png") if args.save_dir else None
-            plot_coil_currents(currents_over_time, dt=dt, save_path=curr_save)
+            plot_coil_signals(
+                currents_over_time,
+                dt=dt,
+                save_path=curr_save,
+                title="Coil Currents",
+                ylabel="Current [A]",
+            )
 
     if args.save_dir:
         print(f"Saved plots to: {args.save_dir}")

@@ -9,6 +9,7 @@ import torch as th
 class SimulationState:
     pos: th.Tensor
     vel: th.Tensor
+    curr: th.Tensor
     target: th.Tensor
 
 
@@ -52,4 +53,5 @@ def initialize_state(config: dict, batch_size: int, grid_limit: float, device: t
         target = _resolve_tensor(target_spec, batch_size, grid_limit, target_margin, device)
 
     vel = th.zeros_like(start_pos)
-    return SimulationState(pos=start_pos, vel=vel, target=target)
+    curr = th.zeros((batch_size,4),dtype=start_pos.dtype, device=device)
+    return SimulationState(pos=start_pos, vel=vel, curr=curr, target=target)

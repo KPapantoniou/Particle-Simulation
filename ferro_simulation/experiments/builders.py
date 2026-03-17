@@ -24,7 +24,8 @@ def build_config(
     record_potential: bool,
     k: float,
     gamma: float,
-    current_limit: float,
+    voltage_limit: float,
+    open_loop_voltage: list[float] | list[list[float]] | None,
     start_margin: float,
     target_margin: float,
     stop_tolerance: float,
@@ -56,7 +57,8 @@ def build_config(
     cfg["experiment"]["batch_size"] = int(batch_size)
     cfg["experiment"]["k"] = float(k) * k_scale
     cfg["experiment"]["gamma"] = float(gamma)
-    cfg["experiment"]["current_limit"] = float(current_limit)
+    cfg["experiment"]["voltage_limit"] = float(voltage_limit)
+    cfg["experiment"]["open_loop_voltage"] = open_loop_voltage
     cfg["experiment"]["start_margin"] = float(start_margin)
     cfg["experiment"]["target_margin"] = float(target_margin)
     cfg["experiment"]["stop_tolerance"] = float(stop_tolerance)
@@ -86,7 +88,8 @@ def build_run_configs(args) -> list[dict]:
         record_potential=args.save_potential,
         k=args.k,
         gamma=args.gamma,
-        current_limit=args.current_limit,
+        voltage_limit=args.voltage_limit,
+        open_loop_voltage=args.open_loop_voltage,
         start_margin=args.start_margin,
         target_margin=args.target_margin,
         stop_tolerance=args.stop_tolerance,

@@ -4,7 +4,7 @@ from functools import partial
 
 import torch as th
 
-from control.controllers import compute_control_currents
+from control.controllers import compute_control_voltages
 from numerics.integrator import integrate
 from numerics.state import initialize_state
 from physics.field import build_field_bases
@@ -64,14 +64,16 @@ def simulate(config: dict) -> dict:
     f_basis, u_basis, grid_limit = build_field_bases(cfg, device)
     state = initialize_state(cfg, batch_size, grid_limit, device)
     start_pos = state.pos.clone()
-
+    resistance = float(cfg["model"].get("coil_resistance", 1.0))
+    
     controller = partial(
-        compute_control_currents,
+        compute_control_voltages,
         f_basis=f_basis,
         grid_limit=grid_limit,
         k=float(experiment.get("k", 1.75)),
         gamma=float(experiment.get("gamma", 1.0)),
-        current_limit=float(experiment.get("current_limit", 2.0)),
+        resistance=resistance,
+        voltage_limit=float(experiment.get("voltage_limit", 2.0)),
     )
     result = integrate(cfg, state, f_basis, u_basis, grid_limit, controller, damping=damping)
     result["start_pos"] = start_pos.detach().to(th.device(numerics.get("history_device", "cpu")))

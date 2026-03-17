@@ -6,3 +6,5 @@ dist/
 *.egg-info/
 particle_sim/
 github_key.pub
+**/results/
+**/viz/
