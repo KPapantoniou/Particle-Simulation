@@ -5,7 +5,7 @@ from typing import Any
 import torch as th
 
 from .constants import MU0
-from .material import magnetic_moment
+from .material import effective_moment
 
 
 def build_coil_centers(grid_limit: float, offset_margin: float) -> list[tuple[float, float]]:
@@ -30,7 +30,7 @@ def build_field_bases(config: dict[str, Any], device: th.device) -> tuple[th.Ten
     coil_radius = float(model.get("coil_radius", 1e-3))
     coil_z_distance = float(model.get("coil_z_distance", 1e-3))
     current_per_coil = float(model.get("coil_current", 1.0))
-    m = magnetic_moment(config)
+    
 
     if "coil_positions" in model:
         centers = [tuple(map(float, p[:2])) for p in model["coil_positions"]]
@@ -49,6 +49,9 @@ def build_field_bases(config: dict[str, Any], device: th.device) -> tuple[th.Ten
         dist_sq = (x_m - cx) ** 2 + (y_m - cy) ** 2
         denom = (coil_radius**2 + coil_z_distance**2 + dist_sq) ** 1.5
         bz = (MU0 * current_per_coil * coil_radius**2) / (2.0 * denom)
+        H_mag = bz/MU0
+        H_mag_tens = H_mag.to(dtype=th.float32)
+        m = effective_moment(H_mag_tens,config)
         u = -m * bz
 
         fx = th.empty_like(u)

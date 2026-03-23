@@ -5,16 +5,37 @@ from typing import Callable
 
 import torch as th
 
-from physics.forces import compute_force, compute_potential
 from .state import SimulationState
+from physics.forces import compute_force, compute_force_analytic, compute_potential
 
+KB = 1.380649e-23
 
 ControllerFn = Callable[[SimulationState], th.Tensor]
+
 StepFn = Callable[
-    [SimulationState, th.Tensor, th.Tensor, float, float, float, float, float, float],
+    [SimulationState, th.Tensor, th.Tensor, float,
+    float, float, float, float, float, float, dict, bool],
     tuple[SimulationState, dict[str, th.Tensor]],
 ]
 
+def _compute_force_dispatch(
+    pos: th.Tensor,
+    currents: th.Tensor,
+    f_basis: th.Tensor,
+    grid_limit: float,
+    coil_params: dict,
+    use_analytic: bool,
+) -> th.Tensor:
+    if use_analytic:
+        return compute_force_analytic(
+            pos,
+            currents,
+            coil_params["centers"],
+            coil_params["radius"],
+            coil_params["z_distance"],
+            coil_params["particle_moment"],
+        )
+    return compute_force(pos, currents, f_basis, grid_limit)
 
 def _current_update_exact(curr: th.Tensor, voltage: th.Tensor, dt: float, resistance: float, inductance: float) -> th.Tensor:
     alpha = th.exp(
@@ -35,12 +56,19 @@ def _advance_linear_drag(
     dt: float,
     damping: float,
     mass: float,
+    temperature: float,
 ) -> tuple[th.Tensor, th.Tensor]:
+    if temperature and damping > 0.0:
+        sigma = (2.0 * KB * temperature * damping/dt) ** 0.5
+        noise = th.randn_like(force) * sigma
+        force = force + noise
+
     if damping <= 0.0:
         acc = force / mass
         vel_next = vel + acc * dt
         pos_next = pos + vel_next * dt
         return pos_next, vel_next
+
 
     c = damping / mass
     exp_term = th.exp(th.tensor(-c * dt, dtype=vel.dtype, device=vel.device))
@@ -59,19 +87,16 @@ def _euler_step(
     mass: float,
     resistance: float,
     inductance: float,
- ) -> tuple[SimulationState, dict[str, th.Tensor]]:
+    temperature: float,
+    coil_params: dict,        
+    use_analytic: bool,      
+) -> tuple[SimulationState, dict[str, th.Tensor]]:
     curr_next = _current_update_exact(state.curr, voltage, dt, resistance, inductance)
-    force = compute_force(state.pos, curr_next, f_basis, grid_limit)
-    pos_next, vel_next = _advance_linear_drag(
-        state.pos,
-        state.vel,
-        force,
-        dt,
-        damping,
-        mass,
+    force = _compute_force_dispatch(
+        state.pos, curr_next, f_basis, grid_limit, coil_params, use_analytic
     )
+    pos_next, vel_next = _advance_linear_drag(state.pos, state.vel, force, dt, damping, mass, temperature)
     return replace(state, pos=pos_next, vel=vel_next, curr=curr_next), {"force": force, "vel": vel_next}
-
 def _rk2_mid_step(
     state: SimulationState,
     voltage: th.Tensor,
@@ -82,12 +107,19 @@ def _rk2_mid_step(
     mass: float,
     resistance: float,
     inductance: float,
- ) -> tuple[SimulationState, dict[str, th.Tensor]]:
+    temperature: float,
+    coil_params: dict,        
+    use_analytic: bool,    
+) -> tuple[SimulationState, dict[str, th.Tensor]]:
     curr_next = _current_update_exact(state.curr, voltage, dt, resistance, inductance)
     curr_mid = 0.5 * (state.curr + curr_next)
-    half_force = compute_force(state.pos, curr_mid, f_basis, grid_limit)
-    x_half, v_half = _advance_linear_drag(state.pos, state.vel, half_force, 0.5 * dt, damping, mass)
-    full_force = compute_force(x_half, curr_mid, f_basis, grid_limit)
+    half_force = _compute_force_dispatch(
+        state.pos, curr_mid, f_basis, grid_limit, coil_params, use_analytic
+    )
+    x_half, v_half = _advance_linear_drag(state.pos, state.vel, half_force, 0.5 * dt, damping, mass, temperature)
+    full_force = _compute_force_dispatch(
+        x_half, curr_mid, f_basis, grid_limit, coil_params, use_analytic
+    )
     pos_next, vel_next = _advance_linear_drag(state.pos, state.vel, full_force, dt, damping, mass)
     return replace(state, pos=pos_next, vel=vel_next, curr=curr_next), {"force": full_force, "vel": vel_next}
 
@@ -133,8 +165,22 @@ def integrate(
 ) -> dict:
     numerics = config["numerics"]
     model = config["model"]
-    experiment = config["experiment"]
+    use_analytic = bool(numerics.get("analytic_force", False))
 
+    from physics.field import build_coil_centers      
+    from physics.material import magnetic_moment
+     
+    coil_params = {
+    "centers":         build_coil_centers(
+                           float(model.get("physical_width", 3e-3)) / 2.0,
+                           float(model.get("coil_offset_margin", 5e-4))
+                       ),
+    "radius":          float(model.get("coil_radius", 1e-3)),
+    "z_distance":      float(model.get("coil_z_distance", 1e-3)),
+    "particle_moment": magnetic_moment(config),
+}
+    experiment = config["experiment"]
+    temperature = float(model.get("temperature", 0.0))
     dt = float(numerics.get("dt", 1e-3))
     t_max = float(numerics.get("t_max", 20.0))
     steps = int(numerics.get("steps", max(1, round(t_max / dt))))
@@ -202,6 +248,9 @@ def integrate(
             mass,
             resistance,
             inductance,
+            temperature,
+            coil_params,      
+            use_analytic, 
         )
         force = diag["force"]
         vel_next = diag["vel"]
@@ -240,6 +289,7 @@ def integrate(
             break
 
     final_target_error = float(th.norm(state.pos - state.target, dim=1).max().item())
+    
     return {
         "mode": mode,
         "dt": dt,

@@ -16,6 +16,7 @@ def base_config() -> dict:
             "fluid_density": 1000.0,
             "hydrodynamic_radius": 5e-6,
             "physical_width": 3e-3,
+            "temperature":300.0,
         },
         "numerics": {
             "nx": 129,
@@ -28,11 +29,12 @@ def base_config() -> dict:
             "potential_stride": 1,
             "record_positions": True,
             "record_potential": True,
+            "analytic_force": True,
         },
         "experiment": {
             "mode": "closed",
-            "batch_size": 1,
-            "k": 1.75,
+            "batch_size": 50,
+            "k": 1.15,
             "gamma": 1.0,
             "voltage_limit": 2.0,
             "open_loop_voltage": None,

@@ -77,4 +77,5 @@ def simulate(config: dict) -> dict:
     )
     result = integrate(cfg, state, f_basis, u_basis, grid_limit, controller, damping=damping)
     result["start_pos"] = start_pos.detach().to(th.device(numerics.get("history_device", "cpu")))
+    
     return result

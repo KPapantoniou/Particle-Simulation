@@ -2,6 +2,20 @@ from __future__ import annotations
 
 import torch as th
 
+from .biot_savart import sample_force_biot_savart  
+
+def compute_force_analytic(
+    pos: th.Tensor,
+    currents: th.Tensor,
+    coil_centers: list[tuple[float, float]],
+    coil_radius: float,
+    coil_z_distance: float,
+    particle_moment: float,
+) -> th.Tensor:
+    return sample_force_biot_savart(
+        pos, currents, coil_centers,
+        coil_radius, coil_z_distance, particle_moment,
+    )
 
 def sample_force_basis(pos: th.Tensor, f_basis: th.Tensor, grid_limit: float) -> th.Tensor:
     nx, ny = f_basis.shape[1], f_basis.shape[2]

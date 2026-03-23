@@ -117,6 +117,7 @@ def _run_dt_sweep(args: argparse.Namespace, out_dir: Path) -> None:
         configs = _build_configs_for_dt(args, dt_value)
         for cfg in configs:
             result = simulate(cfg)
+            print(f"Max Re: {result['max_reynolds_number']}")
             prefix = f"trajectories_{result['mode']}_dt{_dt_label(dt_value)}"
             save_results_pt(result, out_dir / f"{prefix}.pt")
             summary.append(
@@ -148,6 +149,7 @@ def main(argv: list[str] | None = None):
 
     configs = build_run_configs(args)
     results = [simulate(cfg) for cfg in configs]
+   
     for result in results:
         prefix = f"trajectories_{result['mode']}"
         save_results_pt(result, out_dir / f"{prefix}.pt")
